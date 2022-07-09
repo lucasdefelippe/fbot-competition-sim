@@ -22,6 +22,7 @@ motorC = LargeMotor(OUTPUT_C) # Magnet
 spkr = Sound()
 btn = Button()
 radio = Radio()
+pen = Pen(INPUT_5)
 
 # Create sensors
 color_left_sensor = ColorSensor(INPUT_8)
@@ -53,6 +54,9 @@ def line_follower(velocidade, back):
         color = color_left_sensor.reflected_light_intensity
     error = (color - line_follow_average_value)
     steering_value = min(max(error, -100), error)
+
+    # steering_value = steering_value * back
+
     steering.on(-steering_value if not back else steering_value, velocidade)
 
 
@@ -64,61 +68,62 @@ def tube_detection():
         return True
 
 def turn_180_degree_on_line():
-    start_time = time.time()
-    while color_left_sensor.color != 6:
+    gyro_sensor.reset()
+    original_angle = gyro_sensor.angle
+    new_angle = original_angle
+    while new_angle <= 180:
         steering.on(100, global_speed)
-    time.sleep(0.5)
+        new_angle = gyro_sensor.angle
     steering.on(0, 0)
-    end_time = time.time()
-    return end_time - start_time
+
+def get_robot_position():
+    return (left_motor.position + right_motor.position) / 2
+
+def reset_position():
+    left_motor.position = 0
+    right_motor.position = 0
+
 
 
 
 # Code
-follow_line = True
-tube_detection_state = False
-steering.on(0, global_speed)
-
-tubo_mode_timer_start = True
+tube_init_position = None
+tube_end_position = None
+tube_avarange_position = 0
 
 while True:
     # Continua seguindo a linha até mandarem parar
-    if follow_line:
-        line_follower(global_speed, False)
-    else:
-        steering.on(0, 0)
-
+    line_follower(global_speed, False)
 
     # Caso detecte um tubo e set o tempo aonde ele foi encontrado
     has_tube = tube_detection()
-    if has_tube and not tube_detection_state and follow_line:
-        tube_init_time = time.time()
-        tube_detection_state = True
+    
+    if has_tube and not tube_init_position:
+        tube_init_position = get_robot_position()
+
     # Quando o tubo detectado a cima "acaba", set o tempo aonde ele acabou
-    if not has_tube and tube_detection_state and follow_line:
-        tube_end_time = time.time()
-        tube_detection_state = False
-        follow_line = False
+    if not has_tube and tube_init_position != None:
+        tube_end_position = get_robot_position()
+        tube_avarange_position = (tube_end_position - tube_init_position)
+        break
+    
+steering.on(0,0)
+time.sleep(1)
         
-        # Calcula o quanto o robo tem que voltar
-        tube_avarange_time = (tube_end_time - tube_init_time) / 2
-        
-        print(tube_avarange_time)
+# Rotaciona
+turn_180_degree_on_line()
 
+time.sleep(1)
+steering.on(0,0)
 
-    # Modo ir até o tubo
-    if not follow_line:
-        if tubo_mode_timer_start:
-            back_path_init_time = time.time()
-            print(back_path_init_time)
-            tubo_mode_timer_start = False
+reset_position()
 
-        turn_interval = turn_180_degree_on_line()
+while get_robot_position() < tube_avarange_position:
+    print("goal:",  tube_avarange_position, "position:", get_robot_position())
+    line_follower(global_speed, True)
+    
+steering.on(0, 0)
 
-        while time.time() - back_path_init_time < tube_avarange_time + turn_interval:
-            line_follower(global_speed, True)
-            print(time.time())
-        steering.on(0, 0)
 
 
 
